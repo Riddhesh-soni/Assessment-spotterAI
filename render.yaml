@@ -1,13 +1,18 @@
-# Render.com blueprint — deploys the Django API and the React static site.
+# Render.com blueprint — deploys the Django API and the React static site together.
 # Docs: https://render.com/docs/blueprint-spec
 #
-# After deploy, set ORS_API_KEY in the backend service and point the frontend's
-# VITE_API_BASE_URL at the backend URL.
+# The two services are pre-wired to each other's predicted URLs, so the ONLY value
+# you must enter during setup is ORS_API_KEY (your OpenRouteService key).
+#
+# NOTE: the URLs below assume these service names are available on Render. If Render
+# appends a suffix (because a name is taken), update the three URL values to match
+# the real URLs shown in the dashboard, then redeploy.
 services:
   - type: web
-    name: weather-routing-api
+    name: riddhesh-weather-routing-api
     runtime: python
     rootDir: backend
+    plan: free
     buildCommand: ./build.sh
     startCommand: gunicorn config.wsgi:application
     envVars:
@@ -17,25 +22,31 @@ services:
         value: config.settings.prod
       - key: SECRET_KEY
         generateValue: true
+      # Wildcard matches the service's own *.onrender.com host (and any suffix).
       - key: ALLOWED_HOSTS
-        sync: false # set to your backend host, e.g. weather-routing-api.onrender.com
+        value: .onrender.com
+      # Frontend origin allowed to call this API.
       - key: CORS_ALLOWED_ORIGINS
-        sync: false # set to your frontend URL, e.g. https://weather-routing.onrender.com
-      - key: ORS_API_KEY
-        sync: false # paste your OpenRouteService key
+        value: https://riddhesh-weather-routing-web.onrender.com
       - key: SECURE_SSL_REDIRECT
         value: "True"
+      # The one secret you provide during blueprint setup:
+      - key: ORS_API_KEY
+        sync: false
 
   - type: web
-    name: weather-routing-web
+    name: riddhesh-weather-routing-web
     runtime: static
     rootDir: frontend
+    plan: free
     buildCommand: npm ci && npm run build
     staticPublishPath: dist
     envVars:
+      # Backend API base URL (build-time). Baked into the static bundle.
       - key: VITE_API_BASE_URL
-        sync: false # set to the backend URL, e.g. https://weather-routing-api.onrender.com
+        value: https://riddhesh-weather-routing-api.onrender.com
     routes:
+      # SPA fallback so client-side refreshes resolve to index.html.
       - type: rewrite
         source: /*
         destination: /index.html
