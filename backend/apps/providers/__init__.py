@@ -14,6 +14,7 @@ from .base import GeocodingProvider, RoutingProvider, WeatherProvider
 from .geocoding import OpenRouteServiceGeocoder
 from .routing import OpenRouteServiceProvider
 from .weather import OpenMeteoProvider
+from .weatherapi import WeatherAPIProvider
 
 
 def get_geocoder() -> GeocodingProvider:
@@ -38,7 +39,13 @@ def get_router() -> RoutingProvider:
 
 def get_weather() -> WeatherProvider:
     cfg = settings.PROVIDERS["WEATHER"]
-    return OpenMeteoProvider(
-        base_url=cfg["OPEN_METEO_BASE_URL"],
-        timeout=settings.PROVIDERS["HTTP_TIMEOUT"],
-    )
+    timeout = settings.PROVIDERS["HTTP_TIMEOUT"]
+    # Prefer WeatherAPI.com when a key is configured (reliable per-key quota for
+    # hosting); otherwise fall back to keyless Open-Meteo (fine for local dev).
+    if cfg["WEATHERAPI_KEY"]:
+        return WeatherAPIProvider(
+            api_key=cfg["WEATHERAPI_KEY"],
+            base_url=cfg["WEATHERAPI_BASE_URL"],
+            timeout=timeout,
+        )
+    return OpenMeteoProvider(base_url=cfg["OPEN_METEO_BASE_URL"], timeout=timeout)

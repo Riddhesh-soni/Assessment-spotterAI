@@ -103,6 +103,12 @@ PROVIDERS = {
         "OPEN_METEO_BASE_URL": env(
             "OPEN_METEO_BASE_URL", default="https://api.open-meteo.com/v1"
         ),
+        # WeatherAPI.com — per-key quota, reliable from hosted/cloud IPs.
+        # When set, it's used in preference to Open-Meteo (see the factory).
+        "WEATHERAPI_KEY": env("WEATHERAPI_KEY", default=""),
+        "WEATHERAPI_BASE_URL": env(
+            "WEATHERAPI_BASE_URL", default="https://api.weatherapi.com/v1"
+        ),
     },
     "HTTP_TIMEOUT": env.int("PROVIDER_HTTP_TIMEOUT", default=15),
 }

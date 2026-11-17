@@ -30,8 +30,10 @@ services:
         value: https://riddhesh-weather-routing-web.onrender.com
       - key: SECURE_SSL_REDIRECT
         value: "True"
-      # The one secret you provide during blueprint setup:
+      # Secrets you provide during blueprint setup:
       - key: ORS_API_KEY
+        sync: false
+      - key: WEATHERAPI_KEY
         sync: false
 
   - type: web

@@ -14,7 +14,6 @@ Two design choices worth noting:
 """
 from __future__ import annotations
 
-import time
 from datetime import datetime, timezone
 
 from .base import (
@@ -24,33 +23,8 @@ from .base import (
     WeatherProvider,  # noqa: F401  (documents the interface this satisfies)
     request_json,
 )
-
-# --------------------------------------------------------------------------- #
-# Process-local weather cache.
-#
-# Keyed by (rounded coordinate, time window). Weather varies slowly over ~1 km,
-# so rounding to ~0.01 deg safely coalesces identical checkpoint/grid points
-# across repeated plans without materially changing the forecast.
-# --------------------------------------------------------------------------- #
-_CACHE: dict[tuple, tuple[float, HourlyWeather]] = {}
-
-
-def _cache_key(point: GeoPoint, start_key: str, end_key: str) -> tuple:
-    return (round(point.lat, 2), round(point.lng, 2), start_key, end_key)
-
-
-def _cache_get(point: GeoPoint, start_key: str, end_key: str, ttl: int) -> HourlyWeather | None:
-    entry = _CACHE.get(_cache_key(point, start_key, end_key))
-    if entry is None:
-        return None
-    stored_at, value = entry
-    if time.monotonic() - stored_at > ttl:
-        return None
-    return value
-
-
-def _cache_set(point: GeoPoint, start_key: str, end_key: str, value: HourlyWeather) -> None:
-    _CACHE[_cache_key(point, start_key, end_key)] = (time.monotonic(), value)
+from .weather_cache import cache_get as _cache_get
+from .weather_cache import cache_set as _cache_set
 
 # Conversion factors to the spec's units.
 # Open-Meteo reports mph as "mp/h"; include common aliases for robustness.
