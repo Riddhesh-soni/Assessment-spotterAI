@@ -22,6 +22,7 @@ from apps.providers.base import (
     GeoPoint,
     HourlyWeather,
     RoutingProvider,
+    UpstreamError,
     WeatherProvider,
 )
 from apps.risk.engine import classify_checkpoint, rank_routes, summarize_route
@@ -34,8 +35,10 @@ METERS_PER_MILE = 1609.344
 WEATHER_BATCH_SIZE = 100
 # Cap route polyline vertices sent to the client (map performance).
 MAX_GEOMETRY_POINTS = 400
-HEATMAP_COLS = 14
-HEATMAP_ROWS = 9
+# Heatmap grid density. Kept modest so the corridor forecast stays within the
+# weather provider's rate limits while still reading clearly on the map.
+HEATMAP_COLS = 10
+HEATMAP_ROWS = 6
 
 
 # --------------------------------------------------------------------------- #
@@ -180,9 +183,17 @@ class TripPlanner:
         if recommended is not None:
             routes[recommended].is_recommended = True
 
-        heatmap = self._build_heatmap(
-            [r.geometry for r in routes], departure, load_lb
-        )
+        # The corridor heatmap is the heaviest weather consumer. If it gets
+        # rate-limited, don't fail the whole plan — return the routes + checkpoint
+        # risk (the core feature) with an empty heatmap the UI can handle.
+        polylines = [r.geometry for r in routes]
+        try:
+            heatmap = self._build_heatmap(polylines, departure, load_lb)
+        except UpstreamError:
+            hours = [departure + timedelta(hours=h) for h in range(self._horizon + 1)]
+            heatmap = Heatmap(
+                times=hours, bbox=geometry.bounding_box(polylines), cells=[]
+            )
 
         return PlanResult(
             origin=origin_geo.point,

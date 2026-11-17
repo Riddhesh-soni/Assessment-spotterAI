@@ -14,6 +14,7 @@ Two design choices worth noting:
 """
 from __future__ import annotations
 
+import time
 from datetime import datetime, timezone
 
 from .base import (
@@ -23,6 +24,33 @@ from .base import (
     WeatherProvider,  # noqa: F401  (documents the interface this satisfies)
     request_json,
 )
+
+# --------------------------------------------------------------------------- #
+# Process-local weather cache.
+#
+# Keyed by (rounded coordinate, time window). Weather varies slowly over ~1 km,
+# so rounding to ~0.01 deg safely coalesces identical checkpoint/grid points
+# across repeated plans without materially changing the forecast.
+# --------------------------------------------------------------------------- #
+_CACHE: dict[tuple, tuple[float, HourlyWeather]] = {}
+
+
+def _cache_key(point: GeoPoint, start_key: str, end_key: str) -> tuple:
+    return (round(point.lat, 2), round(point.lng, 2), start_key, end_key)
+
+
+def _cache_get(point: GeoPoint, start_key: str, end_key: str, ttl: int) -> HourlyWeather | None:
+    entry = _CACHE.get(_cache_key(point, start_key, end_key))
+    if entry is None:
+        return None
+    stored_at, value = entry
+    if time.monotonic() - stored_at > ttl:
+        return None
+    return value
+
+
+def _cache_set(point: GeoPoint, start_key: str, end_key: str, value: HourlyWeather) -> None:
+    _CACHE[_cache_key(point, start_key, end_key)] = (time.monotonic(), value)
 
 # Conversion factors to the spec's units.
 # Open-Meteo reports mph as "mp/h"; include common aliases for robustness.
@@ -39,9 +67,10 @@ def _convert(values: list, factor_table: dict, unit: str, field: str) -> list[fl
 
 
 class OpenMeteoProvider:
-    def __init__(self, base_url: str, timeout: int):
+    def __init__(self, base_url: str, timeout: int, cache_ttl: int = 1800):
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        self._cache_ttl = cache_ttl
 
     def forecast(
         self, points: list[GeoPoint], start: datetime, end: datetime
@@ -49,6 +78,34 @@ class OpenMeteoProvider:
         if not points:
             return []
 
+        start_key = start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:00")
+        end_key = end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:00")
+
+        # Serve cached points; only fetch the misses. Replanning the same trip
+        # (common during a demo) then costs zero upstream weather calls, which
+        # keeps us well under the provider's per-IP rate limits.
+        results: list[HourlyWeather | None] = [None] * len(points)
+        miss_idx: list[int] = []
+        miss_points: list[GeoPoint] = []
+        for i, p in enumerate(points):
+            cached = _cache_get(p, start_key, end_key, self._cache_ttl)
+            if cached is not None:
+                results[i] = cached
+            else:
+                miss_idx.append(i)
+                miss_points.append(p)
+
+        if miss_points:
+            fetched = self._fetch(miss_points, start_key, end_key)
+            for idx, hw in zip(miss_idx, fetched):
+                results[idx] = hw
+                _cache_set(points[idx], start_key, end_key, hw)
+
+        return [hw for hw in results if hw is not None]
+
+    def _fetch(
+        self, points: list[GeoPoint], start_key: str, end_key: str
+    ) -> list[HourlyWeather]:
         params = {
             "latitude": ",".join(f"{p.lat:.5f}" for p in points),
             "longitude": ",".join(f"{p.lng:.5f}" for p in points),
@@ -57,8 +114,8 @@ class OpenMeteoProvider:
             "precipitation_unit": "inch",
             "temperature_unit": "fahrenheit",
             "timezone": "UTC",
-            "start_hour": start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:00"),
-            "end_hour": end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:00"),
+            "start_hour": start_key,
+            "end_hour": end_key,
         }
         data = request_json(
             "GET", f"{self._base_url}/forecast", timeout=self._timeout, params=params
