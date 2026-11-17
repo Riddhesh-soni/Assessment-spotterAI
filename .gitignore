@@ -1,0 +1,31 @@
+# Python / Django
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+db.sqlite3
+staticfiles/
+.pytest_cache/
+.env
+
+# Node / frontend
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+*.tsbuildinfo
+# tsc build artifacts from the composite node config
+frontend/vite.config.js
+frontend/vite.config.d.ts
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env files (keep the .example templates)
+.env.*
+!.env.example
