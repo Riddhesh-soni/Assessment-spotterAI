@@ -31,7 +31,7 @@ _FORECAST_DAYS = 3
 
 class WeatherAPIProvider:
     def __init__(self, api_key: str, base_url: str, timeout: int,
-                 cache_ttl: int = 1800, max_workers: int = 8):
+                 cache_ttl: int = 1800, max_workers: int = 16):
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout

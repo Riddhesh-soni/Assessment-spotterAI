@@ -14,7 +14,10 @@ services:
     rootDir: backend
     plan: free
     buildCommand: ./build.sh
-    startCommand: gunicorn config.wsgi:application
+    # 2 workers fit the 512MB free instance; the longer timeout covers the
+    # multi-call plan request on the slow free CPU (default gunicorn timeout is
+    # only 30s, which caused 502s on cold/slow requests).
+    startCommand: gunicorn config.wsgi:application --workers 2 --timeout 120
     envVars:
       - key: PYTHON_VERSION
         value: 3.12.13
