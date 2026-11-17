@@ -11,16 +11,18 @@ from __future__ import annotations
 from django.conf import settings
 
 from .base import GeocodingProvider, RoutingProvider, WeatherProvider
-from .geocoding import NominatimGeocoder
+from .geocoding import OpenRouteServiceGeocoder
 from .routing import OpenRouteServiceProvider
 from .weather import OpenMeteoProvider
 
 
 def get_geocoder() -> GeocodingProvider:
-    cfg = settings.PROVIDERS["GEOCODING"]
-    return NominatimGeocoder(
-        base_url=cfg["NOMINATIM_BASE_URL"],
-        user_agent=cfg["USER_AGENT"],
+    # Use ORS (Pelias) geocoding — reuses the routing key and, unlike Nominatim's
+    # public server, is reliable from hosted/cloud IPs.
+    routing = settings.PROVIDERS["ROUTING"]
+    return OpenRouteServiceGeocoder(
+        api_key=routing["ORS_API_KEY"],
+        base_url=routing["ORS_BASE_URL"],
         timeout=settings.PROVIDERS["HTTP_TIMEOUT"],
     )
 
